@@ -1,6 +1,6 @@
 # TinyCPU Debugger
 
-A minimal VS Code debug adapter prototype that exercises the Debug Adapter Protocol (DAP) end-to-end using a toy CPU. It proves breakpoints, stepping, variables, and session lifecycle before swapping in a real Z80 backend.
+A minimal VS Code debug adapter prototype that exercises the Debug Adapter Protocol (DAP) end-to-end using a toy CPU. It proves breakpoints, stepping, variables, and session lifecycle in a self-contained TinyCPU setup.
 
 - **Spec:** `docs/specs/debugger-architecture.md`
 - **Plan:** `docs/implementation-plan.md`
@@ -11,7 +11,7 @@ A minimal VS Code debug adapter prototype that exercises the Debug Adapter Proto
 - An inline debug adapter that translates DAP requests to a TinyCPU runtime.
 - A TinyCPU runtime implemented as simple state + functions (no classes) to keep logic easy to inspect and test.
 
-**Purpose:** validate the debugger pipeline (launch → breakpoints → run/step → variables → halt) in isolation from a real emulator. Once stable, the TinyCPU can be swapped for a Z80 engine without changing the DAP layer.
+**Purpose:** validate the debugger pipeline (launch → breakpoints → run/step → variables → halt) in isolation. This repo focuses only on TinyCPU; you can reuse the adapter patterns when you build a fuller backend elsewhere.
 
 ## Current capabilities
 
@@ -87,6 +87,5 @@ yarn package   # uses vsce; Node 20+ recommended
 ## Roadmap highlights
 
 - Improve error messaging/validation for malformed programs.
-- Optional: implement real pause/interrupt semantics.
-- Swap TinyCPU for a Z80 runtime without changing the DAP layer.
-- Add README quickstart for Z80 once the engine lands.
+- Optional: implement real pause/interrupt semantics (requires an async/interruptible TinyCPU loop).
+- Add `.vscodeignore` and `repository` metadata to tighten packaging output.
