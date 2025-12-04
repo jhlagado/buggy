@@ -8,7 +8,7 @@ This document tracks the implementation of the TinyCPU debugging prototype for V
 
 ## Phase 1: Project Scaffolding
 
-- [x] Initialize npm project with TypeScript
+- [x] Initialize Yarn/TypeScript project
 - [x] Create `package.json` with VS Code extension manifest
 - [x] Configure `tsconfig.json` for extension development
 - [x] Create `.vscode/launch.json` for Extension Development Host
@@ -43,7 +43,7 @@ This document tracks the implementation of the TinyCPU debugging prototype for V
 
 - [x] Implement `continueRequest` — run until breakpoint/halt
 - [x] Implement `nextRequest` — step one instruction
-- [ ] Implement `pauseRequest` — interrupt execution (no-op for sync TinyCPU)
+- [x] Implement `pauseRequest` — for sync TinyCPU this is a documented no-op
 - [x] Send correct `StoppedEvent` with reason (`step`, `breakpoint`, `halt`)
 
 ---
@@ -79,9 +79,9 @@ This document tracks the implementation of the TinyCPU debugging prototype for V
 ## Phase 8: Polish
 
 - [x] Add `stopOnEntry` launch option
-- [ ] Improve error messages for malformed programs
+- [x] Improve error messages for malformed programs
 - [x] Document usage in README
-- [ ] Package with `vsce package`
+- [x] Package with `vsce package`
 
 ---
 

@@ -11,7 +11,13 @@ import {
   Handles,
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { TinyCpuState, createTinyCpu, runTinyCpu, stepTinyCpu } from './tinycpu';
+import {
+  TinyCpuState,
+  createTinyCpu,
+  runTinyCpu,
+  stepTinyCpu,
+  validateTinyCpuProgram,
+} from './tinycpu';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -59,6 +65,16 @@ export class TinyCpuDebugSession extends DebugSession {
     try {
       const content = fs.readFileSync(this.sourceFile, 'utf-8');
       const lines = content.split(/\r?\n/);
+      const validationErrors = validateTinyCpuProgram(lines);
+      if (validationErrors.length > 0) {
+        this.sendErrorResponse(
+          response,
+          1,
+          `Invalid TinyCPU program:\n${validationErrors.join('\n')}`
+        );
+        return;
+      }
+
       this.cpu = createTinyCpu(lines);
 
       this.sendResponse(response);

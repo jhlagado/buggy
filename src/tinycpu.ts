@@ -36,6 +36,57 @@ export function createTinyCpu(program: string[]): TinyCpuState {
 }
 
 /**
+ * Validate TinyCPU program lines. Returns a list of error messages.
+ */
+export function validateTinyCpuProgram(program: string[]): string[] {
+  const errors: string[] = [];
+  const maxIndex = program.length - 1;
+
+  program.forEach((line, idx) => {
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith(';')) {
+      return;
+    }
+
+    const upper = trimmed.toUpperCase();
+
+    if (upper === 'HALT' || upper === 'NOP') {
+      return;
+    }
+
+    if (upper.startsWith('LOAD ')) {
+      if (parseNumber(upper.substring(5)) === undefined) {
+        errors.push(`Line ${idx + 1}: LOAD requires a numeric operand`);
+      }
+      return;
+    }
+
+    if (upper.startsWith('ADD ')) {
+      if (parseNumber(upper.substring(4)) === undefined) {
+        errors.push(`Line ${idx + 1}: ADD requires a numeric operand`);
+      }
+      return;
+    }
+
+    if (upper.startsWith('JMP ')) {
+      const target = parseNumber(upper.substring(4));
+      if (target === undefined) {
+        errors.push(`Line ${idx + 1}: JMP requires a numeric operand`);
+        return;
+      }
+      if (target < 0 || target > maxIndex) {
+        errors.push(`Line ${idx + 1}: JMP target ${target} is out of range (0-${maxIndex})`);
+      }
+      return;
+    }
+
+    errors.push(`Line ${idx + 1}: Unknown instruction "${trimmed}"`);
+  });
+
+  return errors;
+}
+
+/**
  * Execute one instruction and advance the program counter.
  * Mutates the provided state object.
  */

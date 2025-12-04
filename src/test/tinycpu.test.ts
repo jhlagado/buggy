@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createTinyCpu, runTinyCpu, stepTinyCpu } from '../tinycpu';
+import {
+  createTinyCpu,
+  runTinyCpu,
+  stepTinyCpu,
+  validateTinyCpuProgram,
+} from '../tinycpu';
 
 describe('TinyCpu', () => {
   it('executes LOAD/ADD and halts on HALT', () => {
@@ -64,5 +69,14 @@ describe('TinyCpu', () => {
     assert.equal(next.halted, false);
     assert.equal(cpu.pc, 2);
     assert.equal(cpu.acc, 3);
+  });
+
+  it('validates invalid instructions and operands', () => {
+    const errors = validateTinyCpuProgram(['LOAD foo', 'JMP -1', 'XYZ']);
+    assert.equal(errors.length, 3);
+    const [e1, e2, e3] = errors;
+    assert.ok(e1?.includes('Line 1'));
+    assert.ok(e2?.includes('Line 2'));
+    assert.ok(e3?.includes('Line 3'));
   });
 });
