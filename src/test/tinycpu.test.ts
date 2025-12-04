@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createTinyCpu, stepTinyCpu } from '../tinycpu';
+import { createTinyCpu, runTinyCpu, stepTinyCpu } from '../tinycpu';
 
 describe('TinyCpu', () => {
   it('executes LOAD/ADD and halts on HALT', () => {
@@ -49,5 +49,20 @@ describe('TinyCpu', () => {
     assert.equal(cpu.halted, true);
     assert.equal(cpu.pc, 1);
     assert.equal(cpu.acc, 1);
+  });
+
+  it('stops on breakpoint during run', () => {
+    const cpu = createTinyCpu(['LOAD 1', 'ADD 2', 'ADD 3']);
+    const breakpoints = new Set<number>([1]); // stop before ADD 2 executes
+
+    const result = runTinyCpu(cpu, breakpoints);
+    assert.equal(result.reason, 'breakpoint');
+    assert.equal(cpu.pc, 1);
+    assert.equal(cpu.acc, 1);
+
+    const next = stepTinyCpu(cpu);
+    assert.equal(next.halted, false);
+    assert.equal(cpu.pc, 2);
+    assert.equal(cpu.acc, 3);
   });
 });

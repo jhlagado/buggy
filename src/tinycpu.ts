@@ -15,6 +15,10 @@ export interface StepResult {
   acc: number;
 }
 
+export interface RunResult extends StepResult {
+  reason: 'breakpoint' | 'halt';
+}
+
 export interface TinyCpuState {
   pc: number;
   acc: number;
@@ -88,6 +92,30 @@ export function resetTinyCpu(state: TinyCpuState): void {
   state.pc = 0;
   state.acc = 0;
   state.halted = false;
+}
+
+/**
+ * Execute until a breakpoint is hit or the CPU halts.
+ */
+export function runTinyCpu(
+  state: TinyCpuState,
+  breakpoints: Set<number>
+): RunResult {
+  if (state.halted || state.pc >= state.program.length) {
+    state.halted = true;
+    return { halted: true, pc: state.pc, acc: state.acc, reason: 'halt' };
+  }
+
+  while (true) {
+    if (breakpoints.has(state.pc)) {
+      return { halted: false, pc: state.pc, acc: state.acc, reason: 'breakpoint' };
+    }
+
+    const step = stepTinyCpu(state);
+    if (step.halted) {
+      return { halted: true, pc: state.pc, acc: state.acc, reason: 'halt' };
+    }
+  }
 }
 
 function finishStep(state: TinyCpuState): StepResult {

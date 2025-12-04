@@ -11,7 +11,7 @@ import {
   Handles,
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { TinyCpuState, createTinyCpu, stepTinyCpu } from './tinycpu';
+import { TinyCpuState, createTinyCpu, runTinyCpu, stepTinyCpu } from './tinycpu';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -26,6 +26,7 @@ export class TinyCpuDebugSession extends DebugSession {
   private cpu: TinyCpuState | undefined;
   private sourceFile = '';
   private stopOnEntry = false;
+  private haltNotified = false;
   private variableHandles = new Handles<'registers'>();
   private breakpoints: Set<number> = new Set();
 
@@ -53,6 +54,7 @@ export class TinyCpuDebugSession extends DebugSession {
   ): void {
     this.sourceFile = args.program;
     this.stopOnEntry = args.stopOnEntry !== false;
+    this.haltNotified = false;
 
     try {
       const content = fs.readFileSync(this.sourceFile, 'utf-8');
@@ -132,8 +134,9 @@ export class TinyCpuDebugSession extends DebugSession {
     this.sendResponse(response);
 
     if (result.halted) {
-      this.sendEvent(new TerminatedEvent());
+      this.handleHaltStop();
     } else {
+      this.haltNotified = false;
       this.sendEvent(new StoppedEvent('step', THREAD_ID));
     }
   }
@@ -217,6 +220,7 @@ export class TinyCpuDebugSession extends DebugSession {
     _args: DebugProtocol.DisconnectArguments
   ): void {
     this.cpu = undefined;
+    this.haltNotified = false;
     this.sendResponse(response);
   }
 
@@ -235,18 +239,22 @@ export class TinyCpuDebugSession extends DebugSession {
       return;
     }
 
-    // Run until breakpoint or halt
-    while (!this.cpu.halted) {
-      if (this.breakpoints.has(this.cpu.pc)) {
-        this.sendEvent(new StoppedEvent('breakpoint', THREAD_ID));
-        return;
-      }
+    const result = runTinyCpu(this.cpu, this.breakpoints);
 
-      const result = stepTinyCpu(this.cpu);
-      if (result.halted) {
-        this.sendEvent(new TerminatedEvent());
-        return;
-      }
+    if (result.reason === 'breakpoint') {
+      this.haltNotified = false;
+      this.sendEvent(new StoppedEvent('breakpoint', THREAD_ID));
+      return;
+    }
+
+    this.handleHaltStop();
+  }
+
+  private handleHaltStop(): void {
+    if (!this.haltNotified) {
+      this.haltNotified = true;
+      this.sendEvent(new StoppedEvent('halt', THREAD_ID));
+      return;
     }
 
     this.sendEvent(new TerminatedEvent());
