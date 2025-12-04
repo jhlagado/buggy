@@ -1,0 +1,7 @@
+;; Sample TinyCPU program
+;; Calculates 10 + 5 + 3 = 18
+
+LOAD 10
+ADD 5
+ADD 3
+HALT
