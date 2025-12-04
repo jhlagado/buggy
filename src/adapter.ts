@@ -11,7 +11,7 @@ import {
   Handles,
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { TinyCpu } from './tinycpu';
+import { TinyCpuState, createTinyCpu, stepTinyCpu } from './tinycpu';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -23,8 +23,9 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 const THREAD_ID = 1;
 
 export class TinyCpuDebugSession extends DebugSession {
-  private cpu: TinyCpu | undefined;
+  private cpu: TinyCpuState | undefined;
   private sourceFile = '';
+  private stopOnEntry = false;
   private variableHandles = new Handles<'registers'>();
   private breakpoints: Set<number> = new Set();
 
@@ -51,17 +52,17 @@ export class TinyCpuDebugSession extends DebugSession {
     args: LaunchRequestArguments
   ): void {
     this.sourceFile = args.program;
+    this.stopOnEntry = args.stopOnEntry !== false;
 
     try {
       const content = fs.readFileSync(this.sourceFile, 'utf-8');
-      const lines = content.split('\n').filter((line) => line.trim() !== '');
-      this.cpu = new TinyCpu(lines);
+      const lines = content.split(/\r?\n/);
+      this.cpu = createTinyCpu(lines);
 
-      if (args.stopOnEntry === true) {
-        this.sendResponse(response);
+      this.sendResponse(response);
+
+      if (this.stopOnEntry) {
         this.sendEvent(new StoppedEvent('entry', THREAD_ID));
-      } else {
-        this.continueExecution(response);
       }
     } catch (err) {
       this.sendErrorResponse(response, 1, `Failed to load program: ${String(err)}`);
@@ -78,7 +79,7 @@ export class TinyCpuDebugSession extends DebugSession {
     if (args.breakpoints !== undefined && this.cpu !== undefined) {
       for (const bp of args.breakpoints) {
         const line = bp.line;
-        const valid = line >= 1 && line <= this.cpu.programLength;
+        const valid = line >= 1 && line <= this.cpu.program.length;
         if (valid) {
           this.breakpoints.add(line - 1); // Convert to 0-based
         }
@@ -98,6 +99,10 @@ export class TinyCpuDebugSession extends DebugSession {
     _args: DebugProtocol.ConfigurationDoneArguments
   ): void {
     this.sendResponse(response);
+
+    if (!this.stopOnEntry) {
+      this.runUntilStop();
+    }
   }
 
   protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
@@ -123,7 +128,7 @@ export class TinyCpuDebugSession extends DebugSession {
       return;
     }
 
-    const result = this.cpu.step();
+    const result = stepTinyCpu(this.cpu);
     this.sendResponse(response);
 
     if (result.halted) {
@@ -222,6 +227,13 @@ export class TinyCpuDebugSession extends DebugSession {
     }
 
     this.sendResponse(response);
+    this.runUntilStop();
+  }
+
+  private runUntilStop(): void {
+    if (this.cpu === undefined) {
+      return;
+    }
 
     // Run until breakpoint or halt
     while (!this.cpu.halted) {
@@ -230,7 +242,7 @@ export class TinyCpuDebugSession extends DebugSession {
         return;
       }
 
-      const result = this.cpu.step();
+      const result = stepTinyCpu(this.cpu);
       if (result.halted) {
         this.sendEvent(new TerminatedEvent());
         return;

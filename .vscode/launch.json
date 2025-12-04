@@ -25,6 +25,13 @@
                 "${workspaceFolder}/out/**/*.js"
             ],
             "preLaunchTask": "npm: build"
+        },
+        {
+            "name": "Debug TinyCPU Program",
+            "type": "tinycpu",
+            "request": "launch",
+            "program": "${file}",
+            "stopOnEntry": true
         }
     ]
 }

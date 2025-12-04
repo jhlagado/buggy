@@ -5,6 +5,8 @@
  * - LOAD <n>  : Set accumulator to n
  * - ADD <n>   : Add n to accumulator
  * - HALT      : Stop execution
+ *
+ * Implemented as simple state objects plus helper functions (no classes).
  */
 
 export interface StepResult {
@@ -13,96 +15,92 @@ export interface StepResult {
   acc: number;
 }
 
-export class TinyCpu {
-  private _pc = 0;
-  private _acc = 0;
-  private _halted = false;
-  private readonly _program: readonly string[];
+export interface TinyCpuState {
+  pc: number;
+  acc: number;
+  halted: boolean;
+  readonly program: readonly string[];
+}
 
-  constructor(program: string[]) {
-    this._program = Object.freeze([...program]);
+export function createTinyCpu(program: string[]): TinyCpuState {
+  return {
+    pc: 0,
+    acc: 0,
+    halted: false,
+    program: Object.freeze([...program]),
+  };
+}
+
+/**
+ * Execute one instruction and advance the program counter.
+ * Mutates the provided state object.
+ */
+export function stepTinyCpu(state: TinyCpuState): StepResult {
+  if (state.halted || state.pc >= state.program.length) {
+    state.halted = true;
+    return { halted: true, pc: state.pc, acc: state.acc };
   }
 
-  get pc(): number {
-    return this._pc;
+  const line = state.program[state.pc];
+  if (line === undefined) {
+    state.halted = true;
+    return { halted: true, pc: state.pc, acc: state.acc };
   }
 
-  get acc(): number {
-    return this._acc;
+  const instruction = line.trim().toUpperCase();
+
+  // Blank lines and comments are no-ops so source lines stay aligned.
+  if (instruction === '' || instruction.startsWith(';')) {
+    state.pc++;
+    return finishStep(state);
   }
 
-  get halted(): boolean {
-    return this._halted;
+  if (instruction === 'HALT') {
+    state.halted = true;
+    return { halted: true, pc: state.pc, acc: state.acc };
   }
 
-  get programLength(): number {
-    return this._program.length;
-  }
-
-  /**
-   * Execute one instruction and advance the program counter.
-   */
-  step(): StepResult {
-    if (this._halted || this._pc >= this._program.length) {
-      this._halted = true;
-      return { halted: true, pc: this._pc, acc: this._acc };
+  if (instruction.startsWith('LOAD ')) {
+    const value = parseNumber(instruction.substring(5));
+    if (value !== undefined) {
+      state.acc = value;
     }
-
-    const line = this._program[this._pc];
-    if (line === undefined) {
-      this._halted = true;
-      return { halted: true, pc: this._pc, acc: this._acc };
+  } else if (instruction.startsWith('ADD ')) {
+    const value = parseNumber(instruction.substring(4));
+    if (value !== undefined) {
+      state.acc += value;
     }
-
-    const instruction = line.trim().toUpperCase();
-
-    if (instruction === 'HALT' || instruction === '') {
-      this._halted = true;
-      return { halted: true, pc: this._pc, acc: this._acc };
+  } else if (instruction === 'NOP') {
+    // No operation
+  } else if (instruction.startsWith('JMP ')) {
+    const target = parseNumber(instruction.substring(4));
+    if (target !== undefined && target >= 0 && target < state.program.length) {
+      state.pc = target;
+      return { halted: false, pc: state.pc, acc: state.acc };
     }
-
-    if (instruction.startsWith('LOAD ')) {
-      const value = this.parseNumber(instruction.substring(5));
-      if (value !== undefined) {
-        this._acc = value;
-      }
-    } else if (instruction.startsWith('ADD ')) {
-      const value = this.parseNumber(instruction.substring(4));
-      if (value !== undefined) {
-        this._acc += value;
-      }
-    } else if (instruction === 'NOP') {
-      // No operation
-    } else if (instruction.startsWith('JMP ')) {
-      const target = this.parseNumber(instruction.substring(4));
-      if (target !== undefined && target >= 0 && target < this._program.length) {
-        this._pc = target;
-        return { halted: false, pc: this._pc, acc: this._acc };
-      }
-    }
-
-    this._pc++;
-
-    if (this._pc >= this._program.length) {
-      this._halted = true;
-      return { halted: true, pc: this._pc, acc: this._acc };
-    }
-
-    return { halted: false, pc: this._pc, acc: this._acc };
   }
 
-  /**
-   * Reset CPU to initial state.
-   */
-  reset(): void {
-    this._pc = 0;
-    this._acc = 0;
-    this._halted = false;
+  state.pc++;
+  return finishStep(state);
+}
+
+export function resetTinyCpu(state: TinyCpuState): void {
+  state.pc = 0;
+  state.acc = 0;
+  state.halted = false;
+}
+
+function finishStep(state: TinyCpuState): StepResult {
+  if (state.pc >= state.program.length) {
+    state.halted = true;
+    return { halted: true, pc: state.pc, acc: state.acc };
   }
 
-  private parseNumber(str: string): number | undefined {
-    const trimmed = str.trim();
-    const num = parseInt(trimmed, 10);
-    return isNaN(num) ? undefined : num;
-  }
+  return { halted: false, pc: state.pc, acc: state.acc };
+}
+
+function parseNumber(str: string): number | undefined {
+  const trimmed = str.trim();
+  const num = parseInt(trimmed, 10);
+  return Number.isNaN(num) ? undefined : num;
 }
