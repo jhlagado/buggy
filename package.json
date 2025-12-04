@@ -83,7 +83,7 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
-    "pretest": "npm run build",
+    "pretest": "yarn build",
     "test": "node --test out/**/*.test.js",
     "package": "vsce package"
   },

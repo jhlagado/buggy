@@ -2,8 +2,12 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "type": "npm",
-            "script": "build",
+            "label": "yarn: build",
+            "type": "shell",
+            "command": "yarn",
+            "args": [
+                "build"
+            ],
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -13,8 +17,12 @@
             ]
         },
         {
-            "type": "npm",
-            "script": "watch",
+            "label": "yarn: watch",
+            "type": "shell",
+            "command": "yarn",
+            "args": [
+                "watch"
+            ],
             "group": "build",
             "problemMatcher": [
                 "$tsc-watch"
@@ -22,8 +30,12 @@
             "isBackground": true
         },
         {
-            "type": "npm",
-            "script": "lint",
+            "label": "yarn: lint",
+            "type": "shell",
+            "command": "yarn",
+            "args": [
+                "lint"
+            ],
             "group": "test",
             "problemMatcher": [
                 "$eslint-stylish"
