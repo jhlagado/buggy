@@ -11,25 +11,31 @@ import {
   Handles,
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import {
-  TinyCpuState,
-  createTinyCpu,
-  runTinyCpu,
-  stepTinyCpu,
-  validateTinyCpuProgram,
-} from './tinycpu';
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseIntelHex, parseListing, ListingInfo } from './z80-loaders';
+import {
+  createZ80Runtime,
+  Z80Runtime,
+  RunResult as Z80RunResult,
+} from './z80-runtime';
 
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
-  program: string;
+  asm?: string;
+  hex?: string;
+  listing?: string;
+  outputDir?: string;
+  artifactBase?: string;
+  entry?: number;
   stopOnEntry?: boolean;
 }
 
 const THREAD_ID = 1;
 
-export class TinyCpuDebugSession extends DebugSession {
-  private cpu: TinyCpuState | undefined;
+export class Z80DebugSession extends DebugSession {
+  private runtime: Z80Runtime | undefined;
+  private listing: ListingInfo | undefined;
+  private listingPath: string | undefined;
   private sourceFile = '';
   private stopOnEntry = false;
   private haltNotified = false;
@@ -58,24 +64,34 @@ export class TinyCpuDebugSession extends DebugSession {
     response: DebugProtocol.LaunchResponse,
     args: LaunchRequestArguments
   ): void {
-    this.sourceFile = args.program;
     this.stopOnEntry = args.stopOnEntry !== false;
     this.haltNotified = false;
+    this.breakpoints.clear();
+    this.runtime = undefined;
+    this.listing = undefined;
+    this.listingPath = undefined;
 
     try {
-      const content = fs.readFileSync(this.sourceFile, 'utf-8');
-      const lines = content.split(/\r?\n/);
-      const validationErrors = validateTinyCpuProgram(lines);
-      if (validationErrors.length > 0) {
+      const { hexPath, listingPath } = this.resolveArtifacts(args);
+
+      if (!fs.existsSync(hexPath) || !fs.existsSync(listingPath)) {
         this.sendErrorResponse(
           response,
           1,
-          `Invalid TinyCPU program:\n${validationErrors.join('\n')}`
+          `Z80 artifacts not found. Expected HEX at "${hexPath}" and LST at "${listingPath}". Ensure asm80 preLaunch task ran.`
         );
         return;
       }
 
-      this.cpu = createTinyCpu(lines);
+      const hexContent = fs.readFileSync(hexPath, 'utf-8');
+      const program = parseIntelHex(hexContent);
+
+      const listingContent = fs.readFileSync(listingPath, 'utf-8');
+      this.listing = parseListing(listingContent);
+      this.listingPath = listingPath;
+      this.sourceFile = listingPath;
+
+      this.runtime = createZ80Runtime(program, args.entry);
 
       this.sendResponse(response);
 
@@ -94,15 +110,15 @@ export class TinyCpuDebugSession extends DebugSession {
     this.breakpoints.clear();
     const verified: DebugProtocol.Breakpoint[] = [];
 
-    if (args.breakpoints !== undefined && this.cpu !== undefined) {
+    if (args.breakpoints !== undefined && this.runtime !== undefined) {
       for (const bp of args.breakpoints) {
-        const line = bp.line;
-        const valid = line >= 1 && line <= this.cpu.program.length;
-        if (valid) {
-          this.breakpoints.add(line - 1); // Convert to 0-based
+        const address = this.listing?.lineToAddress.get(bp.line);
+        const valid = address !== undefined && args.source?.path === this.listingPath;
+        if (valid && address !== undefined) {
+          this.breakpoints.add(address);
         }
         verified.push({
-          verified: valid,
+          verified: Boolean(valid),
           line: bp.line,
         });
       }
@@ -141,12 +157,12 @@ export class TinyCpuDebugSession extends DebugSession {
     response: DebugProtocol.NextResponse,
     _args: DebugProtocol.NextArguments
   ): void {
-    if (this.cpu === undefined) {
+    if (this.runtime === undefined) {
       this.sendErrorResponse(response, 1, 'No program loaded');
       return;
     }
 
-    const result = stepTinyCpu(this.cpu);
+    const result = this.runtime.step();
     this.sendResponse(response);
 
     if (result.halted) {
@@ -175,8 +191,6 @@ export class TinyCpuDebugSession extends DebugSession {
     response: DebugProtocol.PauseResponse,
     _args: DebugProtocol.PauseArguments
   ): void {
-    // TinyCPU runs synchronously, so pause is effectively a no-op
-    // The UI will show as paused after any stopped event
     this.sendResponse(response);
   }
 
@@ -184,19 +198,21 @@ export class TinyCpuDebugSession extends DebugSession {
     response: DebugProtocol.StackTraceResponse,
     _args: DebugProtocol.StackTraceArguments
   ): void {
-    if (this.cpu === undefined) {
+    if (this.runtime === undefined) {
       response.body = { stackFrames: [], totalFrames: 0 };
       this.sendResponse(response);
       return;
     }
 
-    const line = this.cpu.pc + 1; // Convert to 1-based
-    const source = new Source(path.basename(this.sourceFile), this.sourceFile);
+    const sourcePath = this.listingPath ?? this.sourceFile;
+    const lineFromMap = this.listing?.addressToLine.get(this.runtime.getPC()) ?? 1;
+    const source = new Source(path.basename(sourcePath), sourcePath);
 
     response.body = {
-      stackFrames: [new StackFrame(0, 'main', source, line)],
+      stackFrames: [new StackFrame(0, 'main', source, lineFromMap)],
       totalFrames: 1,
     };
+
     this.sendResponse(response);
   }
 
@@ -217,11 +233,49 @@ export class TinyCpuDebugSession extends DebugSession {
   ): void {
     const scopeType = this.variableHandles.get(args.variablesReference);
 
-    if (scopeType === 'registers' && this.cpu !== undefined) {
+    if (scopeType === 'registers' && this.runtime !== undefined) {
+      const regs = this.runtime.getRegisters();
+      const flagByte =
+        (regs.flags.S << 7) |
+        (regs.flags.Z << 6) |
+        (regs.flags.Y << 5) |
+        (regs.flags.H << 4) |
+        (regs.flags.X << 3) |
+        (regs.flags.P << 2) |
+        (regs.flags.N << 1) |
+        regs.flags.C;
       response.body = {
         variables: [
-          { name: 'pc', value: String(this.cpu.pc), variablesReference: 0 },
-          { name: 'acc', value: String(this.cpu.acc), variablesReference: 0 },
+          {
+            name: 'pc',
+            value: `0x${this.runtime.getPC().toString(16).padStart(4, '0')}`,
+            variablesReference: 0,
+          },
+          {
+            name: 'sp',
+            value: `0x${regs.sp.toString(16).padStart(4, '0')}`,
+            variablesReference: 0,
+          },
+          { name: 'a', value: `0x${regs.a.toString(16).padStart(2, '0')}`, variablesReference: 0 },
+          { name: 'f', value: `0x${flagByte.toString(16).padStart(2, '0')}`, variablesReference: 0 },
+          { name: 'b', value: `0x${regs.b.toString(16).padStart(2, '0')}`, variablesReference: 0 },
+          { name: 'c', value: `0x${regs.c.toString(16).padStart(2, '0')}`, variablesReference: 0 },
+          { name: 'd', value: `0x${regs.d.toString(16).padStart(2, '0')}`, variablesReference: 0 },
+          { name: 'e', value: `0x${regs.e.toString(16).padStart(2, '0')}`, variablesReference: 0 },
+          { name: 'h', value: `0x${regs.h.toString(16).padStart(2, '0')}`, variablesReference: 0 },
+          { name: 'l', value: `0x${regs.l.toString(16).padStart(2, '0')}`, variablesReference: 0 },
+          {
+            name: 'ix',
+            value: `0x${regs.ix.toString(16).padStart(4, '0')}`,
+            variablesReference: 0,
+          },
+          {
+            name: 'iy',
+            value: `0x${regs.iy.toString(16).padStart(4, '0')}`,
+            variablesReference: 0,
+          },
+          { name: 'i', value: `0x${regs.i.toString(16).padStart(2, '0')}`, variablesReference: 0 },
+          { name: 'r', value: `0x${regs.r.toString(16).padStart(2, '0')}`, variablesReference: 0 },
         ],
       };
     } else {
@@ -235,13 +289,13 @@ export class TinyCpuDebugSession extends DebugSession {
     response: DebugProtocol.DisconnectResponse,
     _args: DebugProtocol.DisconnectArguments
   ): void {
-    this.cpu = undefined;
+    this.runtime = undefined;
     this.haltNotified = false;
     this.sendResponse(response);
   }
 
   private continueExecution(response: DebugProtocol.Response): void {
-    if (this.cpu === undefined) {
+    if (this.runtime === undefined) {
       this.sendErrorResponse(response, 1, 'No program loaded');
       return;
     }
@@ -251,18 +305,16 @@ export class TinyCpuDebugSession extends DebugSession {
   }
 
   private runUntilStop(): void {
-    if (this.cpu === undefined) {
+    if (this.runtime === undefined) {
       return;
     }
 
-    const result = runTinyCpu(this.cpu, this.breakpoints);
-
+    const result: Z80RunResult = this.runtime.runUntilStop(this.breakpoints);
     if (result.reason === 'breakpoint') {
       this.haltNotified = false;
       this.sendEvent(new StoppedEvent('breakpoint', THREAD_ID));
       return;
     }
-
     this.handleHaltStop();
   }
 
@@ -275,14 +327,41 @@ export class TinyCpuDebugSession extends DebugSession {
 
     this.sendEvent(new TerminatedEvent());
   }
+
+  private resolveArtifacts(args: LaunchRequestArguments): { hexPath: string; listingPath: string } {
+    let hexPath = args.hex;
+    let listingPath = args.listing;
+
+    const hexMissing = hexPath === undefined || hexPath === '';
+    const listingMissing = listingPath === undefined || listingPath === '';
+
+    if (hexMissing || listingMissing) {
+      if (args.asm === undefined || args.asm === '') {
+        throw new Error('Z80 runtime requires "asm" (root asm file) or explicit "hex" and "listing" paths.');
+      }
+      const artifactBase = args.artifactBase ?? path.basename(args.asm, path.extname(args.asm));
+      const outDir = args.outputDir ?? path.dirname(args.asm);
+      hexPath = path.join(outDir, `${artifactBase}.hex`);
+      listingPath = path.join(outDir, `${artifactBase}.lst`);
+    }
+
+    if (
+      hexPath === undefined ||
+      listingPath === undefined ||
+      hexPath === '' ||
+      listingPath === ''
+    ) {
+      throw new Error('Z80 runtime requires resolvable HEX and LST paths.');
+    }
+
+    return { hexPath, listingPath };
+  }
 }
 
-export class TinyCpuDebugAdapterFactory
-  implements vscode.DebugAdapterDescriptorFactory
-{
+export class Z80DebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
   createDebugAdapterDescriptor(
     _session: vscode.DebugSession
   ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-    return new vscode.DebugAdapterInlineImplementation(new TinyCpuDebugSession());
+    return new vscode.DebugAdapterInlineImplementation(new Z80DebugSession());
   }
 }

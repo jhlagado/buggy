@@ -27,11 +27,15 @@
             "preLaunchTask": "yarn: build"
         },
         {
-            "name": "Debug TinyCPU Program",
-            "type": "tinycpu",
+            "name": "Debug Z80 (asm80)",
+            "type": "z80",
             "request": "launch",
-            "program": "${file}",
-            "stopOnEntry": true
+            "asm": "${file}",
+            "outputDir": "${workspaceFolder}/build",
+            "hex": "${workspaceFolder}/build/${fileBasenameNoExtension}.hex",
+            "listing": "${workspaceFolder}/build/${fileBasenameNoExtension}.lst",
+            "stopOnEntry": true,
+            "preLaunchTask": "asm80: build z80"
         }
     ]
 }

@@ -1,10 +1,14 @@
 {
-  "name": "tinycpu-debugger",
-  "displayName": "TinyCPU Debugger",
-  "description": "Debug Adapter for TinyCPU programs",
+  "name": "z80-debugger",
+  "displayName": "Z80 Debugger",
+  "description": "Debug Adapter for Z80 programs (asm80 + HEX/LST)",
   "version": "0.0.1",
   "publisher": "buggy",
   "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://example.com/your/repo.git"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -18,17 +22,36 @@
   "contributes": {
     "debuggers": [
       {
-        "type": "tinycpu",
-        "label": "TinyCPU Debug",
+        "type": "z80",
+        "label": "Z80 Debug",
         "languages": [],
         "configurationAttributes": {
           "launch": {
-            "required": ["program"],
+            "required": [],
             "properties": {
-              "program": {
+              "asm": {
                 "type": "string",
-                "description": "Path to the TinyCPU program file",
-                "default": "${file}"
+                "description": "Root asm file to assemble with asm80"
+              },
+              "outputDir": {
+                "type": "string",
+                "description": "Directory for generated hex/lst artifacts (defaults to asm directory)"
+              },
+              "artifactBase": {
+                "type": "string",
+                "description": "Base filename for generated hex/lst (defaults to asm basename)"
+              },
+              "hex": {
+                "type": "string",
+                "description": "Path to a Z80 Intel HEX file (optional if asm is provided)"
+              },
+              "listing": {
+                "type": "string",
+                "description": "Path to a Z80 .lst listing file for source mapping (optional if asm is provided)"
+              },
+              "entry": {
+                "type": "number",
+                "description": "Override entry point (defaults to start of HEX data)"
               },
               "stopOnEntry": {
                 "type": "boolean",
@@ -40,39 +63,32 @@
         },
         "initialConfigurations": [
           {
-            "type": "tinycpu",
+            "type": "z80",
             "request": "launch",
-            "name": "Debug TinyCPU Program",
-            "program": "${file}",
+            "name": "Debug Z80 (asm80)",
+            "asm": "${file}",
+            "outputDir": "${workspaceFolder}/build",
+            "hex": "${workspaceFolder}/build/${fileBasenameNoExtension}.hex",
+            "listing": "${workspaceFolder}/build/${fileBasenameNoExtension}.lst",
             "stopOnEntry": true
           }
         ],
         "configurationSnippets": [
           {
-            "label": "TinyCPU: Launch",
-            "description": "Launch and debug a TinyCPU program",
+            "label": "Z80: Launch (HEX + LST)",
+            "description": "Launch and debug a Z80 program from HEX/LST (asm80-generated)",
             "body": {
-              "type": "tinycpu",
+              "type": "z80",
               "request": "launch",
-              "name": "Debug TinyCPU Program",
-              "program": "^\"\\${file}\"",
+              "name": "Debug Z80 (HEX + LST)",
+              "asm": "^\"\\${file}\"",
+              "outputDir": "^\"\\${workspaceFolder}/build\"",
+              "hex": "^\"\\${workspaceFolder}/build/\\${fileBasenameNoExtension}.hex\"",
+              "listing": "^\"\\${workspaceFolder}/build/\\${fileBasenameNoExtension}.lst\"",
               "stopOnEntry": true
             }
           }
         ]
-      }
-    ],
-    "breakpoints": [
-      {
-        "language": "tinycpu"
-      }
-    ],
-    "languages": [
-      {
-        "id": "tinycpu",
-        "aliases": ["TinyCPU"],
-        "extensions": [".tiny"],
-        "configuration": "./language-configuration.json"
       }
     ]
   },
@@ -92,10 +108,10 @@
     "@types/vscode": "^1.80.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
+    "@vscode/vsce": "^2.22.0",
     "eslint": "^8.55.0",
     "prettier": "^3.1.0",
-    "typescript": "^5.3.0",
-    "@vscode/vsce": "^2.22.0"
+    "typescript": "5.3.3"
   },
   "dependencies": {
     "@vscode/debugadapter": "^1.64.0",

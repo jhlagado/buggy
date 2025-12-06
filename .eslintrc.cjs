@@ -34,4 +34,12 @@ module.exports = {
     'no-var': 'error',
   },
   ignorePatterns: ['out/**', 'node_modules/**', '*.js'],
+  overrides: [
+    {
+      files: ['src/test/**/*.ts'],
+      rules: {
+        '@typescript-eslint/no-floating-promises': 'off',
+      },
+    },
+  ],
 };

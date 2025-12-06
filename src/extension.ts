@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { TinyCpuDebugAdapterFactory } from './adapter';
+import { Z80DebugAdapterFactory } from './adapter';
 
 export function activate(context: vscode.ExtensionContext): void {
-  const factory = new TinyCpuDebugAdapterFactory();
+  const factory = new Z80DebugAdapterFactory();
 
   context.subscriptions.push(
-    vscode.debug.registerDebugAdapterDescriptorFactory('tinycpu', factory)
+    vscode.debug.registerDebugAdapterDescriptorFactory('z80', factory)
   );
 }
 

@@ -1,91 +1,32 @@
-# TinyCPU Debugger
+# Z80 Debugger (asm80 + HEX/LST)
 
-A minimal VS Code debug adapter prototype that exercises the Debug Adapter Protocol (DAP) end-to-end using a toy CPU. It proves breakpoints, stepping, variables, and session lifecycle in a self-contained TinyCPU setup.
+Minimal VS Code debug adapter for Z80 programs assembled with asm80. It loads Intel HEX + .lst listings, supports address breakpoints via the listing, stepping/continue, and exposes registers. TinyCPU support has been removed.
 
-- **Spec:** `docs/specs/debugger-architecture.md`
-- **Plan:** `docs/implementation-plan.md`
+## Prerequisites
 
-## What this is
+- Node 18+ (Node 20+ recommended)
+- Yarn
+- asm80 installed locally: `yarn add -D asm80`
 
-- A thin VS Code extension that registers a custom debugger type (`tinycpu`).
-- An inline debug adapter that translates DAP requests to a TinyCPU runtime.
-- A TinyCPU runtime implemented as simple state + functions (no classes) to keep logic easy to inspect and test.
-
-**Purpose:** validate the debugger pipeline (launch → breakpoints → run/step → variables → halt) in isolation. This repo focuses only on TinyCPU; you can reuse the adapter patterns when you build a fuller backend elsewhere.
-
-## Current capabilities
-
-- Launch and debug `.tiny` files with breakpoints and step/continue.
-- Single thread, single frame; variables show `pc` and `acc`.
-- Blank lines and `;` comments are treated as no-ops to keep line numbers aligned.
-- HALT stops with reason `halt`; continue again to terminate.
-- Unit tests for TinyCPU and breakpoint handling (`yarn test`).
-
-Known limitations:
-- `pause` is a no-op for this synchronous runtime.
-- Error messages are minimal; malformed programs aren’t deeply validated.
-- Engine warnings about `engines.vscode` are expected (package managers don’t know that field).
-
-## TinyCPU model (debug target)
-
-- State: `pc`, `acc`, `program`.
-- Instructions: `LOAD n`, `ADD n`, `HALT`, optional `NOP`, `JMP n`.
-- Execution: each `step` mutates state; `run` executes until breakpoint or halt.
-- Comments/blank lines: no-ops; keep source line mapping stable.
-
-## Architecture snapshot
-
-- **VS Code UI**: built-in debugger UI.
-- **Debug Adapter**: `src/adapter.ts` extends `DebugSession`, handles DAP requests, manages breakpoints, emits stopped/terminated events.
-- **Runtime**: `src/tinycpu.ts` functional CPU helpers (`createTinyCpu`, `stepTinyCpu`, `runTinyCpu`).
-- **Transport**: inline adapter (no separate process) via `DebugAdapterDescriptorFactory` in `src/extension.ts`.
-
-## Repo layout
-
-```
-src/
-  adapter.ts       # DAP session
-  extension.ts     # Extension entry, inline adapter factory
-  tinycpu.ts       # TinyCPU runtime (functional)
-  test/tinycpu.test.ts
-examples/
-  simple.tiny
-docs/
-  specs/debugger-architecture.md
-  implementation-plan.md
-```
-
-## Getting started
-
-Prereqs: Node 18+ (Node 20+ recommended) and VS Code.
+## Install & Build
 
 ```bash
 yarn install --ignore-engines
 yarn build
-yarn test          # node --test over compiled output
+yarn test
 ```
 
-## Running the example
+## Z80 workflow
 
-1) Press F5 in VS Code with the “Extension” config to open the Extension Development Host.  
-2) In the Dev Host, open `examples/simple.tiny`.  
-3) In Run and Debug, pick “Debug TinyCPU Program”, then Start.  
-4) With `stopOnEntry` true, you stop at the first instruction; Step/Continue and watch `pc`/`acc` in Variables. Breakpoints on instruction lines are honored.
+1) Open your root `.asm` file (assembled by asm80).
+2) Use the “Debug Z80 (asm80)” launch config. It runs the `asm80: build z80` task to emit `build/<name>.hex` and `build/<name>.lst`, then loads them.
+3) Set breakpoints in the generated `.lst`; they map to instruction addresses.
+4) Start debugging (F5). `stopOnEntry` halts on entry; Step/Continue as usual. Registers show in the Variables view.
 
-Tips:
-- HALT sends a stopped event (`halt`); hit Continue again to terminate.
-- Leading comments/blank lines are no-ops but still count toward line numbers.
-- Set `stopOnEntry` false if you want to auto-run after configuration is done.
+Task/launch config reference:
+- `.vscode/tasks.json` includes `asm80: build z80` (assembles active .asm into `build/`).
+- `.vscode/launch.json` has a “Debug Z80 (asm80)” config pointing at the active asm and output dir.
 
-## Packaging (optional)
-
-```bash
-yarn build
-yarn package   # uses vsce; Node 20+ recommended
-```
-
-## Roadmap highlights
-
-- Improve error messaging/validation for malformed programs.
-- Optional: implement real pause/interrupt semantics (requires an async/interruptible TinyCPU loop).
-- Add `.vscodeignore` and `repository` metadata to tighten packaging output.
+Notes:
+- HALT stops execution; Continue again to terminate.
+- Listing/HEX are required; ensure the preLaunch task has run.
