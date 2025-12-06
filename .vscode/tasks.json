@@ -40,6 +40,12 @@
             "problemMatcher": [
                 "$eslint-stylish"
             ]
+        },
+        {
+            "label": "asm80: build z80",
+            "type": "shell",
+            "command": "cd ${fileDirname} && if [ \"${fileExtname}\" != \".asm\" ]; then echo \"Open an .asm file before running this task.\" && exit 1; fi && mkdir -p ${workspaceFolder}/build && npx asm80 -m Z80 ${fileBasename} && mv ${fileBasenameNoExtension}.hex ${workspaceFolder}/build/${fileBasenameNoExtension}.hex && mv ${fileBasenameNoExtension}.lst ${workspaceFolder}/build/${fileBasenameNoExtension}.lst",
+            "problemMatcher": []
         }
     ]
 }
